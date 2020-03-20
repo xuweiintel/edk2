@@ -18,7 +18,6 @@
 #define DEPENDENCIES_UNSATISFIED  1
 #define DEPENDENCIES_INVALID      2
 
-extern UINT8  mDependenciesCheckStatus;
 
 /**
   Validate the dependency expression and output its size.

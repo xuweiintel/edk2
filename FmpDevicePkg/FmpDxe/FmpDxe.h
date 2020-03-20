@@ -66,6 +66,7 @@ typedef struct {
   CHAR16                                       *LastAttemptStatusVariableName;
   CHAR16                                       *LastAttemptVersionVariableName;
   CHAR16                                       *FmpStateVariableName;
+  UINTN                                        DependenciesCheckStatus;
 } FIRMWARE_MANAGEMENT_PRIVATE_DATA;
 
 ///

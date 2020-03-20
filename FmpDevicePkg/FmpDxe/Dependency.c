@@ -45,11 +45,6 @@ UINTN                          mNumberOfFmpInstance = 0;
 EFI_FIRMWARE_IMAGE_DESCRIPTOR  **mFmpImageInfoBuf   = NULL;
 
 //
-// Indicates the status of dependency check, default value is DEPENDENCIES_SATISFIED.
-//
-UINT8  mDependenciesCheckStatus = DEPENDENCIES_SATISFIED;
-
-//
 // Global stack used to evaluate dependency expressions
 //
 DEPEX_ELEMENT  *mDepexEvaluationStack        = NULL;

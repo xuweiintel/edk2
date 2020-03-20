@@ -81,7 +81,8 @@ const FIRMWARE_MANAGEMENT_PRIVATE_DATA  mFirmwareManagementPrivateDataTemplate =
   NULL,                                        // LsvVariableName
   NULL,                                        // LastAttemptStatusVariableName
   NULL,                                        // LastAttemptVersionVariableName
-  NULL                                         // FmpStateVariableName
+  NULL,                                        // FmpStateVariableName
+  0                                            // DependenciesCheckStatus
 };
 
 ///
@@ -967,7 +968,7 @@ CheckTheImage (
       }
     } else {
       DEBUG ((DEBUG_ERROR, "FmpDxe(%s): CheckTheImage() - Dependency is invalid.\n", mImageIdName));
-      mDependenciesCheckStatus = DEPENDENCIES_INVALID;
+      Private->DependenciesCheckStatus = DEPENDENCIES_INVALID;
       *ImageUpdatable = IMAGE_UPDATABLE_INVALID;
       Status = EFI_SUCCESS;
       goto cleanup;
@@ -1000,7 +1001,7 @@ CheckTheImage (
     } else {
       DEBUG ((DEBUG_ERROR, "FmpDxe(%s): CheckTheImage() - Dependency is not satisfied.\n", mImageIdName));
     }
-    mDependenciesCheckStatus = DEPENDENCIES_UNSATISFIED;
+    Private->DependenciesCheckStatus = DEPENDENCIES_UNSATISFIED;
     *ImageUpdatable = IMAGE_UPDATABLE_INVALID;
     Status = EFI_SUCCESS;
     goto cleanup;
@@ -1164,7 +1165,7 @@ SetTheImage (
   //
   // Set check status to satisfied before CheckTheImage()
   //
-  mDependenciesCheckStatus = DEPENDENCIES_SATISFIED;
+  Private->DependenciesCheckStatus = DEPENDENCIES_SATISFIED;
 
   //
   // Call check image to verify the image
@@ -1218,9 +1219,9 @@ SetTheImage (
       "FmpDxe(%s): SetTheImage() - Check The Image returned that the Image was not valid for update.  Updatable value = 0x%X.\n",
       mImageIdName, Updateable)
       );
-    if (mDependenciesCheckStatus == DEPENDENCIES_UNSATISFIED) {
+    if (Private->DependenciesCheckStatus == DEPENDENCIES_UNSATISFIED) {
       LastAttemptStatus = LAST_ATTEMPT_STATUS_ERROR_UNSATISFIED_DEPENDENCIES;
-    } else if (mDependenciesCheckStatus == DEPENDENCIES_INVALID) {
+    } else if (Private->DependenciesCheckStatus == DEPENDENCIES_INVALID) {
       LastAttemptStatus = LAST_ATTEMPT_STATUS_ERROR_INVALID_FORMAT;
     }
     Status = EFI_ABORTED;
