@@ -43,6 +43,8 @@ typedef struct {
 //
 UINTN                          mNumberOfFmpInstance = 0;
 EFI_FIRMWARE_IMAGE_DESCRIPTOR  **mFmpImageInfoBuf   = NULL;
+UINT32                         *mFmpImageInfoDescriptorVer = NULL;
+UINT32                         *mFmpImageInfoDescriptorSize = NULL;
 
 //
 // Indicates the status of dependency check, default value is DEPENDENCIES_SATISFIED.
@@ -502,6 +504,100 @@ GetDepexSize (
 }
 
 /**
+  Return if this FMP is a system FMP or a device FMP, based upon ImageTypeId.
+
+  @param[in]  ImageTypeId  Image Type Id.
+
+  @return TRUE  It is a system FMP.
+  @return FALSE It is a device FMP.
+**/
+BOOLEAN
+IsSystemFmp (
+  IN GUID  ImageTypeId
+  )
+{
+  GUID   *Guid;
+  UINTN  Count;
+  UINTN  Index;
+
+  Guid  = PcdGetPtr (PcdSystemFmpCapsuleImageTypeIdGuid);
+  Count = PcdGetSize (PcdSystemFmpCapsuleImageTypeIdGuid) / sizeof(GUID);
+
+  for (Index = 0; Index < Count; Index++, Guid++) {
+    if (CompareGuid (&ImageTypeId, Guid)) {
+      return TRUE;
+    }
+  }
+
+  return FALSE;
+}
+
+
+/**
+  Check if the FMP's dependency is required to be evaluated.
+
+  When updating system firmware, do not evaluate the dependency from a device FMP.
+  When updating device firmware, evaluate the dependency from both system and device FMP.
+
+  @param[in]  ImageTypeId        Image Type Id of the Fmp to be update.
+  @param[in]  FmpImageInfoBuf    A pointer to EFI_FIRMWARE_IMAGE_DESCRIPTOR.
+  @param[in]  DescriptorVersion  Descriptor version.
+  @param[in]  DescriptorSize     Descriptor size.
+
+  @return TRUE  Evaluate the dependency.
+  @return FALSE Do not evaluate the dependency.
+**/
+BOOLEAN
+NeedEvaluateDepexFromFmp (
+  IN GUID                           ImageTypeId,
+  IN EFI_FIRMWARE_IMAGE_DESCRIPTOR  *FmpImageInfoBuf,
+  IN UINT32                         FmpImageInfoDescriptorVer,
+  IN UINT32                         FmpImageInfoDescriptorSize
+)
+{
+  //
+  // Descriptor version must be greater than 4.
+  //
+  if (FmpImageInfoDescriptorVer < 4) {
+    return FALSE;
+  }
+
+  //
+  // Check if dependency is supported.
+  //
+  if (FmpImageInfoBuf->AttributesSupported & IMAGE_ATTRIBUTE_DEPENDENCY == 0) {
+    return FALSE;
+  }
+
+  //
+  // Descriptor size must be large enough to dereference the “Dependencies” field.
+  //
+  if (FmpImageInfoDescriptorSize < OFFSET_OF(EFI_FIRMWARE_IMAGE_DESCRIPTOR, Dependencies)) {
+    return FALSE;
+  }
+
+  //
+  // The Dependencies must not be NULL.
+  //
+  if (FmpImageInfoBuf->Dependencies == NULL) {
+    return FALSE;
+  }
+
+  //
+  // When the FMP to be updated is a System FMP, the device FMP's depedency should not be evaluated.
+  //
+  if (IsSystemFmp (ImageTypeId) == TRUE) {
+    if (IsSystemFmp (FmpImageInfoBuf->ImageTypeId) == TRUE) {
+      return TRUE;
+    } else {
+      return FALSE;
+    }
+  } else {
+    return TRUE;
+  }
+}
+
+/**
   Check dependency for firmware update.
 
   @param[in]   ImageTypeId         Image Type Id.
@@ -528,9 +624,7 @@ EvaluateImageDependencies (
   UINTN                             Index;
   EFI_FIRMWARE_MANAGEMENT_PROTOCOL  *Fmp;
   UINTN                             ImageInfoSize;
-  UINT32                            FmpImageInfoDescriptorVer;
   UINT8                             FmpImageInfoCount;
-  UINTN                             DescriptorSize;
   UINT32                            PackageVersion;
   CHAR16                            *PackageVersionName;
   UINTN                             DepexSize;
@@ -554,6 +648,16 @@ EvaluateImageDependencies (
 
   mFmpImageInfoBuf = AllocatePool (sizeof(EFI_FIRMWARE_IMAGE_DESCRIPTOR *) * mNumberOfFmpInstance);
   if (mFmpImageInfoBuf == NULL) {
+    return EFI_OUT_OF_RESOURCES;
+  }
+
+  mFmpImageInfoDescriptorVer = AllocateZeroPool (sizeof(UINT32) * mNumberOfFmpInstance);
+  if (mFmpImageInfoDescriptorVer == NULL) {
+    return EFI_OUT_OF_RESOURCES;
+  }
+
+  mFmpImageInfoDescriptorSize = AllocateZeroPool (sizeof(UINT32) * mNumberOfFmpInstance);
+  if (mFmpImageInfoDescriptorSize == NULL) {
     return EFI_OUT_OF_RESOURCES;
   }
 
@@ -591,9 +695,9 @@ EvaluateImageDependencies (
                     Fmp,
                     &ImageInfoSize,               // ImageInfoSize
                     mFmpImageInfoBuf[Index],      // ImageInfo
-                    &FmpImageInfoDescriptorVer,   // DescriptorVersion
+                    &mFmpImageInfoDescriptorVer[Index],   // DescriptorVersion
                     &FmpImageInfoCount,           // DescriptorCount
-                    &DescriptorSize,              // DescriptorSize
+                    &mFmpImageInfoDescriptorSize[Index],              // DescriptorSize
                     &PackageVersion,              // PackageVersion
                     &PackageVersionName           // PackageVersionName
                     );
@@ -648,8 +752,7 @@ EvaluateImageDependencies (
       if (CompareGuid (&ImageTypeId, &mFmpImageInfoBuf[Index]->ImageTypeId)) {
         continue;
       }
-      if ((mFmpImageInfoBuf[Index]->AttributesSupported & IMAGE_ATTRIBUTE_DEPENDENCY) &&
-           mFmpImageInfoBuf[Index]->Dependencies != NULL) {
+      if (NeedEvaluateDepexFromFmp (ImageTypeId, mFmpImageInfoBuf[Index], mFmpImageInfoDescriptorVer[Index], mFmpImageInfoDescriptorSize[Index])) {
         //
         // Get the size of depex.
         // Assume that the dependencies in EFI_FIRMWARE_IMAGE_DESCRIPTOR is validated when PopulateDescriptor().
@@ -673,6 +776,14 @@ cleanup:
       }
     }
     FreePool (mFmpImageInfoBuf);
+  }
+
+  if (mFmpImageInfoDescriptorVer != NULL) {
+    FreePool (mFmpImageInfoDescriptorVer);
+  }
+
+  if (mFmpImageInfoDescriptorSize != NULL) {
+    FreePool (mFmpImageInfoDescriptorSize);
   }
 
   return EFI_SUCCESS;
