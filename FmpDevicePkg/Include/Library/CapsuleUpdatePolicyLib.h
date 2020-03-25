@@ -100,4 +100,20 @@ IsLockFmpDeviceAtLockEventGuidRequired (
   VOID
   );
 
+
+/**
+  Determines if the FMP dependency check should be performed. The result from
+  this function is FALSE by default. A platform can choose to return TRUE to
+  enable dependency check.
+
+  @retval TRUE   The FMP dependency check is required.
+  @retval FALSE  Do not perform FMP dependency check.
+
+**/
+BOOLEAN
+EFIAPI
+IsFmpDependencyCheckRequired (
+  VOID
+  );
+
 #endif
