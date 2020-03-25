@@ -113,6 +113,10 @@
   # @Prompt Firmware Device Image Type ID
   gFmpDevicePkgTokenSpaceGuid.PcdFmpDeviceImageTypeIdGuid|{0}|VOID*|0x40000010
 
+  ## This indicator is uesed to enable or disable the support of Fmp dependency.
+  # @Prompt Fmp Dependency Support
+  gFmpDevicePkgTokenSpaceGuid.PcdFmpDepenedencySupport|FALSE|BOOLEAN|0x40000012
+
 [PcdsFixedAtBuild, PcdsPatchableInModule, PcdsDynamic, PcdsDynamicEx]
   ## One or more PKCS7 certificates used to verify a firmware device capsule
   #  update image.  Encoded using the Variable-Length Opaque Data format of RFC

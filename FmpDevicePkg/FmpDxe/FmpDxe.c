@@ -394,7 +394,8 @@ PopulateDescriptor (
   //
   // Check the attribute IMAGE_ATTRIBUTE_DEPENDENCY
   //
-  if (Private->Descriptor.AttributesSupported & IMAGE_ATTRIBUTE_DEPENDENCY) {
+  if (Private->Descriptor.AttributesSupported & IMAGE_ATTRIBUTE_DEPENDENCY &&
+      PcdGetBool(PcdFmpDepenedencySupport)) {
     //
     // The parameter "Image" of FmpDeviceGetImage() is extended to contain the dependency.
     // Get the dependency from the Image.
@@ -658,7 +659,8 @@ GetTheImage (
   //
   // Check the attribute IMAGE_ATTRIBUTE_DEPENDENCY
   //
-  if (Private->Descriptor.AttributesSetting & IMAGE_ATTRIBUTE_DEPENDENCY) {
+  if (Private->Descriptor.AttributesSetting & IMAGE_ATTRIBUTE_DEPENDENCY &&
+      PcdGetBool(PcdFmpDepenedencySupport)) {
     //
     // Validate the dependency to get its size.
     //
@@ -946,7 +948,7 @@ CheckTheImage (
     goto cleanup;
   }
   Status = GetFmpPayloadHeaderVersion (FmpPayloadHeader, FmpPayloadSize, &Version);
-  if (EFI_ERROR (Status)) {
+  if (EFI_ERROR (Status) && PcdGetBool(PcdFmpDepenedencySupport)) {
     //
     // Check if there is dependency expression
     //
@@ -993,19 +995,20 @@ CheckTheImage (
   //
   // Evaluate dependency expression
   //
-  Status = EvaluateImageDependencies (Private->Descriptor.ImageTypeId, Version, Dependencies, DependenciesSize, &IsDepexSatisfied);
-  if (!IsDepexSatisfied || EFI_ERROR (Status)) {
-    if (EFI_ERROR (Status)) {
-      DEBUG ((DEBUG_ERROR, "FmpDxe(%s): CheckTheImage() - Dependency check failed %r.\n", mImageIdName, Status));
-    } else {
-      DEBUG ((DEBUG_ERROR, "FmpDxe(%s): CheckTheImage() - Dependency is not satisfied.\n", mImageIdName));
+  if (PcdGetBool(PcdFmpDepenedencySupport)) {
+    Status = EvaluateImageDependencies (Private->Descriptor.ImageTypeId, Version, Dependencies, DependenciesSize, &IsDepexSatisfied);
+    if (!IsDepexSatisfied || EFI_ERROR (Status)) {
+      if (EFI_ERROR (Status)) {
+        DEBUG ((DEBUG_ERROR, "FmpDxe(%s): CheckTheImage() - Dependency check failed %r.\n", mImageIdName, Status));
+      } else {
+        DEBUG ((DEBUG_ERROR, "FmpDxe(%s): CheckTheImage() - Dependency is not satisfied.\n", mImageIdName));
+      }
+      mDependenciesCheckStatus = DEPENDENCIES_UNSATISFIED;
+      *ImageUpdatable = IMAGE_UPDATABLE_INVALID;
+      Status = EFI_SUCCESS;
+      goto cleanup;
     }
-    mDependenciesCheckStatus = DEPENDENCIES_UNSATISFIED;
-    *ImageUpdatable = IMAGE_UPDATABLE_INVALID;
-    Status = EFI_SUCCESS;
-    goto cleanup;
   }
-
   //
   // Get the FmpHeaderSize so we can determine the real payload size
   //
@@ -1189,7 +1192,7 @@ SetTheImage (
     goto cleanup;
   }
   Status = GetFmpPayloadHeaderVersion (FmpHeader, FmpPayloadSize, &IncomingFwVersion);
-  if (EFI_ERROR (Status)) {
+  if (EFI_ERROR (Status) && PcdGetBool(PcdFmpDepenedencySupport)) {
     //
     // Check if there is dependency expression
     //
@@ -1326,7 +1329,8 @@ SetTheImage (
   //
   // Check the attribute IMAGE_ATTRIBUTE_DEPENDENCY
   //
-  if (Private->Descriptor.AttributesSetting & IMAGE_ATTRIBUTE_DEPENDENCY) {
+  if (Private->Descriptor.AttributesSetting & IMAGE_ATTRIBUTE_DEPENDENCY &&
+      PcdGetBool(PcdFmpDepenedencySupport)) {
     //
     // To support saving dependency, extend param "Image" of FmpDeviceSetImage() to
     // contain the dependency inside. FmpDeviceSetImage() is responsible for saving
