@@ -116,6 +116,23 @@ BOOLEAN
   IN  EDKII_CAPSULE_UPDATE_POLICY_PROTOCOL  *This
   );
 
+/**
+  Determines if the FMP dependency check should be performed. The result from
+  this function is FALSE by default. A platform can choose to return TRUE to
+  enable dependency check.
+
+  @param[in]  This  A pointer to the EDKII_CAPSULE_UPDATE_POLICY_PROTOCOL instance.
+
+  @retval TRUE   The FMP dependency check is required.
+  @retval FALSE  Do not perform FMP dependency check.
+
+**/
+typedef
+BOOLEAN
+(EFIAPI * EDKII_CAPSULE_UPDATE_POLICY_IS_FMP_DEPENDENCY_CHECK_REQUIRED) (
+  IN  EDKII_CAPSULE_UPDATE_POLICY_PROTOCOL  *This
+  );
+
 ///
 /// This protocol provides platform policy services used during a capsule update.
 ///
@@ -125,6 +142,7 @@ struct _EDKII_CAPSULE_UPDATE_POLICY_PROTOCOL {
   EDKII_CAPSULE_UPDATE_POLICY_CHECK_SYSTEM_ENVIRONMENT                    CheckSystemEnvironment;
   EDKII_CAPSULE_UPDATE_POLICY_IS_LOWEST_SUPPORTED_VERSION_CHECK_REQUIRED  IsLowestSupportedVersionCheckRequired;
   EDKII_CAPSULE_UPDATE_POLICY_IS_FMP_DEVICE_AT_LOCK_EVENT_REQUIRED        IsLockFmpDeviceAtLockEventGuidRequired;
+  EDKII_CAPSULE_UPDATE_POLICY_IS_FMP_DEPENDENCY_CHECK_REQUIRED            IsFmpDependencyCheckRequired;
 };
 
 extern EFI_GUID gEdkiiCapsuleUpdatePolicyProtocolGuid;
