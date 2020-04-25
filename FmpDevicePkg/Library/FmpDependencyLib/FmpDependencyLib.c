@@ -1,5 +1,5 @@
 /** @file
-  Supports Capsule Dependency Expression.
+  Supports Fmp Capsule Dependency Expression.
 
   Copyright (c) 2020, Intel Corporation. All rights reserved.<BR>
 
@@ -71,6 +71,7 @@ GrowDepexStack (
 
   NewStack = AllocatePool (Size * sizeof (DEPEX_ELEMENT));
   if (NewStack == NULL) {
+    DEBUG ((DEBUG_ERROR, "GrowDepexStack: Cannot allocate memory for dependency evaluation stack!\n"));
     return EFI_OUT_OF_RESOURCES;
   }
 
@@ -152,7 +153,6 @@ Push (
   return EFI_SUCCESS;
 }
 
-
 /**
   Pop an element from the stack.
 
@@ -174,6 +174,7 @@ Pop (
   // Check for a stack underflow condition
   //
   if (mDepexEvaluationStackPointer == mDepexEvaluationStack) {
+    DEBUG ((DEBUG_ERROR, "EvaluateDependency: Stack underflow!\n"));
     return EFI_ACCESS_DENIED;
   }
 
@@ -183,6 +184,7 @@ Pop (
   mDepexEvaluationStackPointer--;
   *Element = *mDepexEvaluationStackPointer;
   if ((*Element).Type != Type) {
+    DEBUG ((DEBUG_ERROR, "EvaluateDependency: Popped element type is mismatched!\n"));
     return EFI_INVALID_PARAMETER;
   }
   return EFI_SUCCESS;
@@ -191,10 +193,10 @@ Pop (
 /**
   Evaluate the dependencies.
 
-  @param[in]   Dependencies        Dependency expressions.
-  @param[in]   DependenciesSize    Size of Dependency expressions.
-  @param[in]   FmpVersions         Array of Fmp ImageTypeId and version.
-  @param[in]   FmpVersionsCount    Element count of the arrary
+  @param[in]   Dependencies       Dependency expressions.
+  @param[in]   DependenciesSize   Size of Dependency expressions.
+  @param[in]   FmpVersions        Array of Fmp ImageTypeId and version.
+  @param[in]   FmpVersionsCount   Element count of the arrary
 
   @retval TRUE    Dependency expressions evaluate to TRUE.
   @retval FALSE   Dependency expressions evaluate to FALSE.
@@ -221,13 +223,8 @@ EvaluateDependency (
     return FALSE;
   }
 
-  if (FmpVersions == NULL || FmpVersions == 0) {
-    return FALSE;
-  }
-
   //
-  // Clean out memory leaks in Depex Boolean stack. Leaks are only caused by
-  // incorrectly formed DEPEX expressions
+  // Clean out memory leaks in Depex Evaluation stack.
   //
   mDepexEvaluationStackPointer = mDepexEvaluationStack;
 
@@ -237,14 +234,14 @@ EvaluateDependency (
     {
     case EFI_FMP_DEP_PUSH_GUID:
       if (Iterator + sizeof (EFI_GUID) >= (UINT8 *) Dependencies->Dependencies + DependenciesSize) {
-        Status = EFI_INVALID_PARAMETER;
+        DEBUG ((DEBUG_ERROR, "EvaluateDependency: GUID extends beyond end of dependency expression!\n"));
         goto Error;
       }
 
       CopyGuid (&ImageTypeId, (EFI_GUID *) (Iterator + 1));
       Iterator = Iterator + sizeof (EFI_GUID);
 
-      for (Index = 0; Index < FmpVersionsCount; Index ++){
+      for (Index = 0; Index < FmpVersionsCount; Index ++) {
         if(CompareGuid (&FmpVersions[Index].ImageTypeId, &ImageTypeId)){
           Status = Push (FmpVersions[Index].Version, VersionType);
           if (EFI_ERROR (Status)) {
@@ -254,13 +251,13 @@ EvaluateDependency (
         }
       }
       if (Index == FmpVersionsCount) {
-        Status = EFI_NOT_FOUND;
+        DEBUG ((DEBUG_ERROR, "EvaluateDependency: %g is not found!\n", &ImageTypeId));
         goto Error;
       }
       break;
     case EFI_FMP_DEP_PUSH_VERSION:
       if (Iterator + sizeof (UINT32) >= (UINT8 *) Dependencies->Dependencies + DependenciesSize ) {
-        Status = EFI_INVALID_PARAMETER;
+        DEBUG ((DEBUG_ERROR, "EvaluateDependency: VERSION extends beyond end of dependency expression!\n"));
         goto Error;
       }
 
@@ -273,6 +270,9 @@ EvaluateDependency (
       break;
     case EFI_FMP_DEP_VERSION_STR:
       Iterator += AsciiStrnLenS ((CHAR8 *) Iterator, DependenciesSize - (Iterator - Dependencies->Dependencies));
+      if (Iterator == (UINT8 *) Dependencies->Dependencies + DependenciesSize) {
+        DEBUG ((DEBUG_ERROR, "EvaluateDependency: STRING extends beyond end of dependency expression!\n"));
+      }
       break;
     case EFI_FMP_DEP_AND:
       Status = Pop (&Element1, BooleanType);
@@ -401,34 +401,34 @@ EvaluateDependency (
       }
       return Element1.Value.Boolean;
     default:
-      Status = EFI_INVALID_PARAMETER;
+      DEBUG ((DEBUG_ERROR, "EvaluateDependency: Unknown Opcode - %02x!\n", *Iterator));
       goto Error;
     }
     Iterator++;
   }
 
-Error:
+  DEBUG ((DEBUG_ERROR, "EvaluateDependency: No EFI_FMP_DEP_END Opcode in exression!\n"));
 
-  DEBUG ((DEBUG_ERROR, "FmpDependencyCheckLib: Dependency expression evaluates to FALSE (Status = %r)\n", Status));
+Error:
   return FALSE;
 }
 
 /**
   Validate the dependency expression and output its size.
 
-  @param[in]   ImageDepex      Pointer to the EFI_FIRMWARE_IMAGE_DEP.
-  @param[in]   MaxDepexSize    Max size of the dependency.
-  @param[out]  DepexSize       Size of dependency.
+  @param[in]   ImageDepex     Pointer to the EFI_FIRMWARE_IMAGE_DEP.
+  @param[in]   MaxDepexSize   Max size of the dependency.
+  @param[out]  DepexSize      Size of dependency.
 
-  @retval TRUE           The capsule is valid.
-  @retval FALSE          The capsule is invalid.
+  @retval TRUE    The capsule is valid.
+  @retval FALSE   The capsule is invalid.
 
 **/
 BOOLEAN
 ValidateDependency (
-  IN  EFI_FIRMWARE_IMAGE_DEP             *ImageDepex,
-  IN  CONST UINTN                        MaxDepexSize,
-  OUT UINT32                             *DepexSize
+  IN  EFI_FIRMWARE_IMAGE_DEP  *ImageDepex,
+  IN  CONST UINTN             MaxDepexSize,
+  OUT UINT32                  *DepexSize
   )
 {
   UINT8  *Depex;
@@ -475,7 +475,7 @@ ValidateDependency (
   Get the size of dependencies. Assume the dependencies is validated before
   calling this function.
 
-  @param[in]   Dependencies    Pointer to the EFI_FIRMWARE_IMAGE_DEP.
+  @param[in]  Dependencies   Pointer to the EFI_FIRMWARE_IMAGE_DEP.
 
   @retval  The size of dependencies.
 
@@ -503,12 +503,12 @@ GetDependencySize (
 /**
   Get dependency from the new capsule.
 
-  @param[in]  Image             Points to the new firmware image.
-  @param[in]  ImageSize         Size, in bytes, of the new firmware image.
-  @param[out] DepexSize         Size, in bytes, of the dependency.
+  @param[in]  Image       Points to the new firmware image.
+  @param[in]  ImageSize   Size, in bytes, of the new firmware image.
+  @param[out] DepexSize   Size, in bytes, of the dependency.
 
   @retval  The pointer to dependency.
-  @retval  Null 
+  @retval  Null
 
 **/
 EFI_FIRMWARE_IMAGE_DEP*

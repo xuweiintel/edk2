@@ -727,7 +727,6 @@ CheckTheImage (
   UINT8                             *PublicKeyDataXdrEnd;
   EFI_FIRMWARE_IMAGE_DEP            *Dependencies;
   UINT32                            DependenciesSize;
-  BOOLEAN                           IsDepexSatisfied;
 
   Status           = EFI_SUCCESS;
   RawSize          = 0;
@@ -894,14 +893,9 @@ CheckTheImage (
   //
   // Evaluate dependency expression
   //
-  Status = CheckFmpDependency (Private->Descriptor.ImageTypeId, Version, Dependencies, DependenciesSize, &IsDepexSatisfied);
-  if (!IsDepexSatisfied || EFI_ERROR (Status)) {
-    if (EFI_ERROR (Status)) {
-      DEBUG ((DEBUG_ERROR, "FmpDxe(%s): CheckTheImage() - Dependency check failed %r.\n", mImageIdName, Status));
-    } else {
-      DEBUG ((DEBUG_ERROR, "FmpDxe(%s): CheckTheImage() - Dependency is not satisfied.\n", mImageIdName));
-    }
-    Private->DependenciesSatisfied = FALSE;
+  Private->DependenciesSatisfied = CheckFmpDependency (Private->Descriptor.ImageTypeId, Version, Dependencies, DependenciesSize);
+  if (!Private->DependenciesSatisfied) {
+    DEBUG ((DEBUG_ERROR, "FmpDxe(%s): CheckTheImage() - Dependency check failed.\n", mImageIdName));
     *ImageUpdatable = IMAGE_UPDATABLE_INVALID;
     Status = EFI_SUCCESS;
     goto cleanup;

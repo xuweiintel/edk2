@@ -25,9 +25,9 @@
 /**
   Check if there is dependency in EFI_FIRMWARE_IMAGE_DESCRIPTOR.
 
-  @param[in]   FmpImageInfoBuf   Pointer to EFI Firmware Image Descriptor.
-  @param[in]   DescriptorVer     Version of the descriptor.
-  @param[in]   DescriptorSize    Size of the Descriptor.
+  @param[in]  FmpImageInfoBuf   Pointer to EFI Firmware Image Descriptor.
+  @param[in]  DescriptorVer     Version of the descriptor.
+  @param[in]  DescriptorSize    Size of the Descriptor.
 
   @retval  TRUE    There is dependency in descriptor.
   @retval  FALSE   There is no dependency in descriptor.
@@ -41,14 +41,14 @@ DoDependnecyExist (
   )
 {
   //
-  // Descriptor version must be greater than 3.
+  // Descriptor version must be greater than or equal to 4.
   //
   if (DescriptorVer < 4) {
     return FALSE;
   }
 
   //
-  // Dependency must be enabled
+  // Dependency must be enabled.
   //
   if ((FmpImageInfoBuf->AttributesSetting & IMAGE_ATTRIBUTE_DEPENDENCY) == 0) {
     return FALSE;
@@ -62,7 +62,7 @@ DoDependnecyExist (
   }
 
   //
-  // Dependencies must not to NULL
+  // Dependencies must not be NULL.
   //
   if (FmpImageInfoBuf->Dependencies == NULL) {
     return FALSE;
@@ -74,24 +74,22 @@ DoDependnecyExist (
 /**
   Check dependency for firmware update.
 
-  @param[in]   ImageTypeId         Image Type Id.
-  @param[in]   Version             New version.
-  @param[in]   Dependencies        The dependencies.
-  @param[in]   DependenciesSize    Size of the dependencies
-  @param[out]  IsSatisfied         Indicate the dependencies is satisfied or not.
+  @param[in]   ImageTypeId    Image Type Id.
+  @param[in]   Version        New version.
+  @param[in]   Dependencies   The dependencies.
+  @param[in]   DepexSize      Size of the dependencies
 
-  @retval  EFI_SUCCESS             Dependency Evaluation is successful.
-  @retval  Others                  Dependency Evaluation fails with unexpected error.
+  @retval  EFI_SUCCESS   Dependency Evaluation is successful.
+  @retval  Others        Dependency Evaluation fails with unexpected error.
 
 **/
-EFI_STATUS
+BOOLEAN
 EFIAPI
 CheckFmpDependency (
   IN  CONST EFI_GUID                ImageTypeId,
   IN  CONST UINT32                  Version,
   IN  CONST EFI_FIRMWARE_IMAGE_DEP  *Dependencies,
-  IN  CONST UINT32                  DependenciesSize,
-  OUT BOOLEAN                       *IsSatisfied
+  IN  CONST UINT32                  DependenciesSize
   )
 {
   EFI_STATUS                        Status;
@@ -109,9 +107,10 @@ CheckFmpDependency (
   EFI_FIRMWARE_IMAGE_DESCRIPTOR     **FmpImageInfoBuf;
   FMP_DEPEX_CHECK_VERSION_DATA      *FmpVersions;
   UINTN                             FmpVersionsCount;
+  BOOLEAN                           IsSatisfied;
 
   if (!FeaturePcdGet (PcdFmpDependencyCheckEnable)) {
-    return EFI_UNSUPPORTED;
+    return TRUE;
   }
 
   FmpImageInfoBuf     = NULL;
@@ -120,11 +119,11 @@ CheckFmpDependency (
   NumberOfFmpInstance = 0;
   FmpVersions         = NULL;
   FmpVersionsCount    = 0;
-  *IsSatisfied        = TRUE;
+  IsSatisfied         = FALSE;
   PackageVersionName  = NULL;
 
   //
-  // Get ImageDescriptors of all FMP instances, and archive them for depex evaluation.
+  // Get ImageDescriptors of all FMP instances, and archive them for dependency evaluation.
   //
   Status = gBS->LocateHandleBuffer (
                 ByProtocol,
@@ -135,7 +134,7 @@ CheckFmpDependency (
                 );
   if (EFI_ERROR (Status)) {
     DEBUG ((DEBUG_ERROR, "CheckFmpDependency: search fmp failed. - %r", Status));
-    return Status;
+    goto cleanup;
   }
 
   FmpImageInfoBuf = AllocateZeroPool (sizeof(EFI_FIRMWARE_IMAGE_DESCRIPTOR *) * NumberOfFmpInstance);
@@ -222,10 +221,10 @@ CheckFmpDependency (
   // Step 1 - Evaluate firmware image's depex, against the version of other Fmp instances.
   //
   if (Dependencies != NULL) {
-    *IsSatisfied = EvaluateDependency (Dependencies, DependenciesSize, FmpVersions, FmpVersionsCount);
+    IsSatisfied = EvaluateDependency (Dependencies, DependenciesSize, FmpVersions, FmpVersionsCount);
   }
 
-  if (!*IsSatisfied) {
+  if (!IsSatisfied) {
     goto cleanup;
   }
 
@@ -265,8 +264,8 @@ CheckFmpDependency (
         //
         DepexSize = GetDependencySize (FmpImageInfoBuf[Index]->Dependencies);
         if (DepexSize > 0) {
-          *IsSatisfied = EvaluateDependency (FmpImageInfoBuf[Index]->Dependencies, DepexSize, FmpVersions, FmpVersionsCount);
-          if (!*IsSatisfied) {
+          IsSatisfied = EvaluateDependency (FmpImageInfoBuf[Index]->Dependencies, DepexSize, FmpVersions, FmpVersionsCount);
+          if (!IsSatisfied) {
             break;
           }
         }
@@ -296,9 +295,8 @@ cleanup:
     FreePool (FmpVersions);
   }
 
-  return Status;
+  return IsSatisfied;
 }
-
 
 /**
   Generates a Null-terminated Unicode string UEFI Variable name from a base name
@@ -338,10 +336,6 @@ GenerateFmpDepexVariableName (
   //
   Status = FmpDeviceGetHardwareInstance (&HardwareInstance);
   if (Status == EFI_UNSUPPORTED) {
-    HardwareInstance = 0;
-  }
-
-  if (HardwareInstance == 0) {
     return VariableName;
   }
 
@@ -361,8 +355,10 @@ GenerateFmpDepexVariableName (
   @param[in]  Depex       Fmp dependency.
   @param[in]  DepexSize   Size, in bytes, of the Fmp dependency.
 
-  @retval   EFI_SUCCESS   Save Fmp dependnecy succeeds.
-  @retval   Others        Save Fmp dependnecy failes.
+  @retval  EFI_SUCCESS       Save Fmp dependency succeeds.
+  @retval  EFI_UNSUPPORTED   Save Fmp dependency is not supported.
+  @retval  Others            Save Fmp dependency failes.
+
 **/
 EFI_STATUS
 EFIAPI
@@ -413,7 +409,7 @@ SaveFmpDependency (
 EFI_FIRMWARE_IMAGE_DEP*
 EFIAPI
 GetFmpDependency (
-  OUT UINT32                 *DepexSize
+  OUT UINT32  *DepexSize
   )
 {
   EFI_STATUS             Status;
@@ -476,8 +472,8 @@ GetFmpDependency (
 /**
   The constructor function to lock FmpDepex variable.
 
-  @param[in]   ImageHandle    The firmware allocated handle for the EFI image.
-  @param[in]   SystemTable    A pointer to the EFI System Table.
+  @param[in]   ImageHandle   The firmware allocated handle for the EFI image.
+  @param[in]   SystemTable   A pointer to the EFI System Table.
 
   @retval EFI_SUCCESS   The constructor succeeds.
 
@@ -517,7 +513,7 @@ FmpDependencyCheckLibConstructor (
                            &gEfiCallerIdGuid
                            );
   if (EFI_ERROR (Status)) {
-    DEBUG ((DEBUG_ERROR, "FmpDependencyCheckLib: Failed to lock variable %s (%r)", DepexVariableName, Status));
+    DEBUG ((DEBUG_ERROR, "FmpDependencyCheckLib: Failed to lock variable %s (%r)\n", DepexVariableName, Status));
   }
 
   if (DepexVariableName != NULL) {
