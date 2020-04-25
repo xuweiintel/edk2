@@ -35,6 +35,8 @@
   #
   DEFINE DEVICE_FMP_STORAGE_ACCESS_ENABLE = TRUE
 
+!include UnitTestFrameworkPkg/UnitTestFrameworkPkgTarget.dsc.inc
+
 [LibraryClasses]
   UefiDriverEntryPoint|MdePkg/Library/UefiDriverEntryPoint/UefiDriverEntryPoint.inf
   UefiBootServicesTableLib|MdePkg/Library/UefiBootServicesTableLib/UefiBootServicesTableLib.inf
